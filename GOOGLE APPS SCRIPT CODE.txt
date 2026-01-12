@@ -210,24 +210,44 @@ function sendEvaluationEmail(email, caseId) {
     // Hardcode the URL to ensure it points to the correct deployment
     const scriptUrl = "https://script.google.com/macros/s/AKfycbzfzMHHSaH1m71CPXgGRTy3JbWF4OvEPdmsfMRSf2rQ4TQooLN8np_g1pZgPzi-qb0R/exec"; 
     const evaluationUrl = `${scriptUrl}?page=evaluate&caseId=${caseId}`;
-    const subject = `IT Helpdesk - แจ้งปิดเคสงาน (${caseId}) และแบบประเมินความพึงพอใจ`;
-    const body = `
-      เรียนคุณผู้ใช้งาน,
-
-      เคสงานของคุณ (รหัส: ${caseId}) ได้รับการแก้ไขและปิดงานเรียบร้อยแล้ว
-      
-      กรุณาคลิกลิงก์ด้านล่างเพื่อประเมินความพึงพอใจต่อการให้บริการของเรา:
-      ${evaluationUrl}
-
-      ขอบคุณที่ใช้บริการ
-      IT Helpdesk Team
+    const subject = `แจ้งปิดเคสงาน IT Helpdesk (${caseId}) และขอรับการประเมิน`;
+    
+    const htmlBody = `
+      <div style="font-family: 'Sarabun', sans-serif; color: #333; max-width: 600px; padding: 20px;">
+        <h3 style="color: #000; margin-bottom: 20px;">เรียนคุณผู้ใช้งาน,</h3>
+        
+        <p style="margin-bottom: 10px;">
+          เคสงาน IT Helpdesk ของคุณ<br>
+          <strong>รหัสเคส: ${caseId}</strong><br>
+          <span style="display: flex; align-items: center; gap: 5px;">
+            ได้ดำเนินการแก้ไขเรียบร้อยแล้ว <span style="color: #22c55e; font-size: 1.2em;">✅</span>
+          </span>
+        </p>
+        
+        <p style="margin-top: 20px;">
+          เพื่อช่วยให้เราปรับปรุงคุณภาพการให้บริการให้ดียิ่งขึ้น<br>
+          รบกวนสละเวลา <strong>ไม่เกิน 1 นาที</strong> เพื่อประเมินความพึงพอใจของคุณ<br>
+          โดยคลิกที่ปุ่มด้านล่างนี้
+        </p>
+        
+        <div style="margin: 30px 0;">
+          <a href="${evaluationUrl}" style="text-decoration: none; display: inline-block; padding: 15px 25px; color: #333; font-weight: bold; background-color: #fff; border: 2px solid #0d9488; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <span style="color: #fbbf24; margin-right: 5px;">⭐</span> ประเมินความพึงพอใจการให้บริการ
+          </a>
+        </div>
+        
+        <p style="margin-top: 40px; color: #666; font-size: 0.9em;">
+          ขอขอบคุณที่ใช้บริการ<br>
+          IT Hardware Team
+        </p>
+      </div>
     `;
 
     try {
         MailApp.sendEmail({
             to: email,
             subject: subject,
-            body: body
+            htmlBody: htmlBody
         });
         Logger.log("Email sent to: " + email);
         return { success: true };
