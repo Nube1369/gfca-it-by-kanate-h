@@ -145,6 +145,9 @@ function doPost(e) {
       case 'closeTicket':
         result = handleCloseTicket(ticketSheet, requestData);
         break;
+      case 'resendEvaluationEmail':
+        result = handleResendEvaluationEmail(ticketSheet, requestData);
+        break;
       case 'addUser':
         result = handleAddUser(userSheet, requestData);
         break;
@@ -208,7 +211,7 @@ function sendEvaluationEmail(email, caseId) {
         return { success: false, error: "Email or CaseID missing" };
     }
     // Hardcode the URL to ensure it points to the correct deployment
-    const scriptUrl = "https://script.google.com/macros/s/AKfycbzfzMHHSaH1m71CPXgGRTy3JbWF4OvEPdmsfMRSf2rQ4TQooLN8np_g1pZgPzi-qb0R/exec"; 
+    const scriptUrl = "https://script.google.com/macros/s/AKfycbyl7ot3u6zwdSr3n5dm52wZJHG08lmKhhIaPuuZiZ7Ogerv1rd1l4GmFCVDaABSAPXY/exec"; 
     const evaluationUrl = `${scriptUrl}?page=evaluate&caseId=${caseId}`;
     const subject = `แจ้งปิดเคสงาน IT Helpdesk (${caseId}) และขอรับการประเมิน`;
     
@@ -315,7 +318,7 @@ function getEvaluateHtml(caseId) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzfzMHHSaH1m71CPXgGRTy3JbWF4OvEPdmsfMRSf2rQ4TQooLN8np_g1pZgPzi-qb0R/exec"; 
+            const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyl7ot3u6zwdSr3n5dm52wZJHG08lmKhhIaPuuZiZ7Ogerv1rd1l4GmFCVDaABSAPXY/exec"; 
             
             // **** INJECTED FROM SERVER ****
             const caseId = "${caseId}"; 
@@ -453,6 +456,80 @@ function handleCloseTicket(sheet, data) {
   }
 
   return ContentService.createTextOutput(JSON.stringify({ success: true, message: message })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleResendEvaluationEmail(sheet, data) {
+  if (!data.rowIndex || isNaN(Number(data.rowIndex))) { 
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid row index." })).setMimeType(ContentService.MimeType.JSON); 
+  }
+  
+  const rowIndex = Number(data.rowIndex);
+  const status = sheet.getRange(rowIndex, 6).getValue();
+  if (status !== "Closed") {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Ticket is not closed." })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Check if 24 hours have passed since closing
+  const closedDateStr = sheet.getRange(rowIndex, 10).getDisplayValue();
+  const closedTimeStr = sheet.getRange(rowIndex, 11).getDisplayValue();
+  
+  if (!closedDateStr || !closedTimeStr) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Missing closed date/time." })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Parse Thai date (DD/MM/YYYY BE format)
+  const dateParts = closedDateStr.split('/');
+  const timeParts = closedTimeStr.split(':');
+  if (dateParts.length !== 3 || timeParts.length < 2) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid date/time format." })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const day = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10) - 1;
+  const yearBE = parseInt(dateParts[2], 10);
+  const yearAD = yearBE - 543;
+  const hours = parseInt(timeParts[0], 10);
+  const minutes = parseInt(timeParts[1], 10);
+  const seconds = parseInt(timeParts[2] || '0', 10);
+  
+  const closedDate = new Date(yearAD, month, day, hours, minutes, seconds);
+  const now = new Date();
+  const hoursSinceClosed = (now - closedDate) / (1000 * 60 * 60);
+  
+  if (hoursSinceClosed < 24) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      success: false, 
+      message: `ต้องรออีก ${Math.ceil(24 - hoursSinceClosed)} ชั่วโมงก่อนส่งอีเมลซ้ำ` 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Check if already evaluated
+  const scoreQ = sheet.getRange(rowIndex, 18).getValue();
+  if (scoreQ && scoreQ.toString().trim() !== '') {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Already evaluated." })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Get email and case ID
+  const userEmail = sheet.getRange(rowIndex, 2).getValue();
+  const caseId = sheet.getRange(rowIndex, 1).getValue();
+  
+  if (!userEmail || !userEmail.includes("@")) {
+    sheet.getRange(rowIndex, 17).setValue("Resend Failed: Invalid Email");
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid email address." })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Send the email
+  const emailResult = sendEvaluationEmail(userEmail, caseId);
+  const timestamp = new Date().getTime();
+  sheet.getRange(rowIndex, 14).setValue(timestamp); // Update LastUpdated
+  
+  if (emailResult.success) {
+    sheet.getRange(rowIndex, 17).setValue("Resent");
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Evaluation email resent successfully." })).setMimeType(ContentService.MimeType.JSON);
+  } else {
+    sheet.getRange(rowIndex, 17).setValue("Resend Failed: " + emailResult.error);
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Failed to resend: " + emailResult.error })).setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 function handleSubmitEvaluation(sheet, data) {
