@@ -1022,6 +1022,53 @@
         #logout-btn:hover .right {
             height: 100%;
         }
+
+        /* Countdown Timer Styles */
+        .countdown-container {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+        }
+
+        .countdown-label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .countdown-timer {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #3b82f6;
+            font-family: 'Inter', monospace;
+        }
+
+        .countdown-sending {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .countdown-sending .countdown-label {
+            color: #22c55e;
+        }
+
+        .countdown-sending .countdown-timer {
+            color: #22c55e;
+        }
+
+        .countdown-resent {
+            background: rgba(139, 92, 246, 0.1);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .countdown-resent .countdown-label {
+            color: #8b5cf6;
+        }
     </style>
 </head>
 
@@ -1351,7 +1398,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfzMHHSaH1m71CPXgGRTy3JbWF4OvEPdmsfMRSf2rQ4TQooLN8np_g1pZgPzi-qb0R/exec';
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyl7ot3u6zwdSr3n5dm52wZJHG08lmKhhIaPuuZiZ7Ogerv1rd1l4GmFCVDaABSAPXY/exec';
             let allTickets = [], adminUsers = [], problemTypeChart, dailyTrendChart, monthlyTrendChart;
             let confirmCallback = null;
             let pollingIntervalId = null;
@@ -1797,8 +1844,8 @@
                                     ${(() => {
                             if (ticket.Status !== 'Closed') return '';
                             const emailStatus = ticket.EmailStatus ? ticket.EmailStatus.toString().trim() : '';
-                            if (emailStatus === 'Sent') {
-                                return `<span class="badge rounded-pill bg-info bg-opacity-75" style="font-size: 0.75rem;"><i class="bi bi-envelope-check-fill me-1"></i>ส่งเมลแล้ว</span>`;
+                            if (emailStatus === 'Sent' || emailStatus === 'Resent') {
+                                return `<span class="badge rounded-pill bg-info bg-opacity-75" style="font-size: 0.75rem;"><i class="bi bi-envelope-check-fill me-1"></i>${emailStatus === 'Resent' ? 'ส่งซ้ำแล้ว' : 'ส่งเมลแล้ว'}</span>`;
                             } else if (emailStatus.includes('Failed')) {
                                 return `<span class="badge rounded-pill bg-danger bg-opacity-75" style="font-size: 0.75rem;"><i class="bi bi-envelope-x-fill me-1"></i>ส่งไม่ผ่าน</span>`;
                             }
@@ -1824,6 +1871,17 @@
                                 <p class="mb-1"><strong><i class="bi bi-chat-square-text-fill me-2"></i>หมายเหตุการแก้ไข:</strong></p>
                                 <p class="text-white-50 mb-0" style="white-space: pre-wrap;">${sanitizeHTML(ticket.ResolutionComment)}</p>
                             </div>` : ''}
+                            ${(() => {
+                            if (ticket.Status !== 'Closed') return '';
+                            const isEvaluated = ticket.ScoreQ && ticket.ScoreQ.toString().trim() !== '';
+                            if (isEvaluated) return '';
+                            const emailStatus = ticket.EmailStatus ? ticket.EmailStatus.toString().trim() : '';
+                            if (emailStatus.includes('Failed')) return '';
+                            return `<div class="countdown-container" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-row-index="${ticket.RowIndex}" data-closed-date="${sanitizeHTML(ticket.ClosedDate)}" data-closed-time="${sanitizeHTML(ticket.ClosedTime)}" data-email-status="${sanitizeHTML(emailStatus)}">
+                                    <div class="countdown-label"><i class="bi bi-envelope-at"></i> <span class="countdown-status-text">ส่งอีเมลขอประเมินอีกครั้งใน</span></div>
+                                    <div class="countdown-timer">กำลังคำนวณ...</div>
+                                </div>`;
+                        })()}
                             <div class="mt-auto text-end pt-3">
                             ${ticket.Status === 'Open' ? `<button class="btn btn-success btn-sm close-ticket-btn" data-row-index="${ticket.RowIndex}"><i class="bi bi-check-circle"></i> ปิดเคส</button>` : ''}
                             </div>
@@ -1849,6 +1907,101 @@
                 const userCount = users.length;
                 DOMElements.userLimitMsg.textContent = `จำนวนผู้ใช้: ${userCount}/5`;
                 DOMElements.addUserForm.querySelector('button').disabled = userCount >= 5;
+            };
+
+            // ===== COUNTDOWN TIMER & AUTO RESEND EVALUATION EMAIL =====
+            let countdownIntervalId = null;
+            const RESEND_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+            const pendingResends = new Set(); // Track cases that are currently being resent
+
+            const startCountdownTimers = () => {
+                if (countdownIntervalId) clearInterval(countdownIntervalId);
+
+                countdownIntervalId = setInterval(() => {
+                    const containers = document.querySelectorAll('.countdown-container');
+                    containers.forEach(container => {
+                        const caseId = container.dataset.caseId;
+                        const rowIndex = container.dataset.rowIndex;
+                        const closedDate = container.dataset.closedDate;
+                        const closedTime = container.dataset.closedTime;
+                        const emailStatus = container.dataset.emailStatus;
+
+                        const closedDateTime = parseThaiDateTime(closedDate, closedTime);
+                        if (!closedDateTime) {
+                            container.querySelector('.countdown-timer').textContent = 'ไม่พบวันที่ปิด';
+                            return;
+                        }
+
+                        const now = new Date();
+                        const resendTime = new Date(closedDateTime.getTime() + RESEND_COOLDOWN_MS);
+                        const timeLeft = resendTime - now;
+
+                        if (timeLeft <= 0) {
+                            // Time's up - trigger auto resend
+                            if (!pendingResends.has(caseId) && emailStatus !== 'Resent') {
+                                triggerAutoResend(caseId, rowIndex, container);
+                            }
+                        } else {
+                            // Display countdown
+                            const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+                            const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                            const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+                            container.querySelector('.countdown-timer').textContent =
+                                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        }
+                    });
+                }, 1000);
+            };
+
+            const triggerAutoResend = async (caseId, rowIndex, container) => {
+                pendingResends.add(caseId);
+
+                // Update UI to show sending state
+                container.classList.add('countdown-sending');
+                container.querySelector('.countdown-status-text').innerHTML = '<i class="bi bi-send me-1"></i>กำลังส่งอีเมลขอประเมินซ้ำ...';
+                container.querySelector('.countdown-timer').textContent = 'โปรดรอสักครู่';
+
+                try {
+                    const token = sessionStorage.getItem('authToken');
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            action: 'resendEvaluationEmail',
+                            token,
+                            rowIndex: rowIndex
+                        })
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        container.classList.remove('countdown-sending');
+                        container.classList.add('countdown-resent');
+                        container.querySelector('.countdown-status-text').innerHTML = '<i class="bi bi-check-circle me-1"></i>ส่งอีเมลซ้ำสำเร็จ!';
+                        container.querySelector('.countdown-timer').textContent = '✓';
+                        container.dataset.emailStatus = 'Resent';
+
+                        // Refresh data after a short delay
+                        setTimeout(() => initializeApp(true), 2000);
+                    } else {
+                        container.querySelector('.countdown-status-text').textContent = 'ส่งไม่สำเร็จ: ' + result.message;
+                        container.querySelector('.countdown-timer').textContent = '✗';
+                        container.classList.remove('countdown-sending');
+                    }
+                } catch (error) {
+                    container.querySelector('.countdown-status-text').textContent = 'เกิดข้อผิดพลาด';
+                    container.querySelector('.countdown-timer').textContent = error.message;
+                    container.classList.remove('countdown-sending');
+                } finally {
+                    pendingResends.delete(caseId);
+                }
+            };
+
+            const stopCountdownTimers = () => {
+                if (countdownIntervalId) {
+                    clearInterval(countdownIntervalId);
+                    countdownIntervalId = null;
+                }
             };
 
             async function initializeApp(isSilent = false) {
@@ -1923,6 +2076,7 @@
                 renderTickets(allTickets);
                 renderUsers(adminUsers);
                 startPolling();
+                startCountdownTimers();
             }
 
             function startPolling() {
@@ -1943,6 +2097,7 @@
                 DOMElements.adminDashboard.style.display = 'none';
                 DOMElements.logoutBtn.style.display = 'none';
                 if (pollingIntervalId) clearInterval(pollingIntervalId);
+                stopCountdownTimers();
                 Modals.login.show();
             }
 
