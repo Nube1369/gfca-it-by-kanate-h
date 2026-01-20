@@ -1398,7 +1398,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyl7ot3u6zwdSr3n5dm52wZJHG08lmKhhIaPuuZiZ7Ogerv1rd1l4GmFCVDaABSAPXY/exec';
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx6SywFMzeGIpizxI-vrGz0SCXHGdXyBpaaOx2KVSeLVcOWbhFgY6TxjMRX9LtBlO33/exec';
             let allTickets = [], adminUsers = [], problemTypeChart, dailyTrendChart, monthlyTrendChart;
             let confirmCallback = null;
             let pollingIntervalId = null;
@@ -1877,8 +1877,11 @@
                             if (isEvaluated) return '';
                             const emailStatus = ticket.EmailStatus ? ticket.EmailStatus.toString().trim() : '';
                             if (emailStatus.includes('Failed')) return '';
-                            return `<div class="countdown-container" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-row-index="${ticket.RowIndex}" data-closed-date="${sanitizeHTML(ticket.ClosedDate)}" data-closed-time="${sanitizeHTML(ticket.ClosedTime)}" data-email-status="${sanitizeHTML(emailStatus)}">
-                                    <div class="countdown-label"><i class="bi bi-envelope-at"></i> <span class="countdown-status-text">ส่งอีเมลขอประเมินอีกครั้งใน</span></div>
+                            const emailSendCount = ticket.EmailSendCount ? parseInt(ticket.EmailSendCount) : 1;
+                            const lastEmailDate = ticket.LastEmailSentDate || ticket.ClosedDate;
+                            const lastEmailTime = ticket.LastEmailSentTime || ticket.ClosedTime;
+                            return `<div class="countdown-container" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-row-index="${ticket.RowIndex}" data-last-email-date="${sanitizeHTML(lastEmailDate)}" data-last-email-time="${sanitizeHTML(lastEmailTime)}" data-email-status="${sanitizeHTML(emailStatus)}" data-send-count="${emailSendCount}">
+                                    <div class="countdown-label"><i class="bi bi-envelope-at"></i> <span class="countdown-status-text">ส่งอีเมลขอประเมินอีกครั้งใน</span><span class="send-count-badge" style="margin-left: 0.5rem; background: rgba(139, 92, 246, 0.2); padding: 0.1rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; color: #a78bfa;">ครั้งที่ ${emailSendCount}</span></div>
                                     <div class="countdown-timer">กำลังคำนวณ...</div>
                                 </div>`;
                         })()}
@@ -1922,18 +1925,18 @@
                     containers.forEach(container => {
                         const caseId = container.dataset.caseId;
                         const rowIndex = container.dataset.rowIndex;
-                        const closedDate = container.dataset.closedDate;
-                        const closedTime = container.dataset.closedTime;
+                        const lastEmailDate = container.dataset.lastEmailDate;
+                        const lastEmailTime = container.dataset.lastEmailTime;
                         const emailStatus = container.dataset.emailStatus;
 
-                        const closedDateTime = parseThaiDateTime(closedDate, closedTime);
-                        if (!closedDateTime) {
-                            container.querySelector('.countdown-timer').textContent = 'ไม่พบวันที่ปิด';
+                        const lastEmailDateTime = parseThaiDateTime(lastEmailDate, lastEmailTime);
+                        if (!lastEmailDateTime) {
+                            container.querySelector('.countdown-timer').textContent = 'ไม่พบวันที่ส่งอีเมล';
                             return;
                         }
 
                         const now = new Date();
-                        const resendTime = new Date(closedDateTime.getTime() + RESEND_COOLDOWN_MS);
+                        const resendTime = new Date(lastEmailDateTime.getTime() + RESEND_COOLDOWN_MS);
                         const timeLeft = resendTime - now;
 
                         if (timeLeft <= 0) {
