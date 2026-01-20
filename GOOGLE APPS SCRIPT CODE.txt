@@ -206,7 +206,7 @@ function sendToTeams(data, webhookUrl, rowId) {
   }
 }
 
-function sendEvaluationEmail(email, caseId) {
+function sendEvaluationEmail(email, caseId, ticketInfo) {
     if (!email || !caseId) {
         return { success: false, error: "Email or CaseID missing" };
     }
@@ -215,6 +215,12 @@ function sendEvaluationEmail(email, caseId) {
     const evaluationUrl = `${scriptUrl}?page=evaluate&caseId=${caseId}`;
     const subject = `แจ้งปิดเคสงาน IT Helpdesk (${caseId}) และขอรับการประเมิน`;
     
+    // Extract ticket info with defaults
+    const submitterName = ticketInfo?.submitterName || email;
+    const problemDetails = ticketInfo?.problemDetails || '-';
+    const submissionDate = ticketInfo?.submissionDate || '-';
+    const submissionTime = ticketInfo?.submissionTime || '';
+    
     const htmlBody = `
       <div style="font-family: 'Sarabun', sans-serif; color: #333; max-width: 600px; padding: 20px;">
         <h3 style="color: #000; margin-bottom: 20px;">เรียนคุณผู้ใช้งาน,</h3>
@@ -222,6 +228,9 @@ function sendEvaluationEmail(email, caseId) {
         <p style="margin-bottom: 10px;">
           เคสงาน IT Helpdesk ของคุณ<br>
           <strong>รหัสเคส: ${caseId}</strong><br>
+          <strong>ชื่อผู้แจ้ง:</strong> ${submitterName}<br>
+          <strong>วันที่แจ้ง:</strong> ${submissionDate} ${submissionTime}<br>
+          <strong>รายละเอียด:</strong> ${problemDetails}<br><br>
           <span style="display: flex; align-items: center; gap: 5px;">
             ได้ดำเนินการแก้ไขเรียบร้อยแล้ว <span style="color: #22c55e; font-size: 1.2em;">✅</span>
           </span>
@@ -437,6 +446,16 @@ function handleCloseTicket(sheet, data) {
 
   // Send Email
   const caseId = sheet.getRange(rowIndex, 1).getValue();
+  const problemDetails = sheet.getRange(rowIndex, 5).getValue(); // Column E: ProblemDetails
+  const submissionDate = sheet.getRange(rowIndex, 8).getDisplayValue(); // Column H: SubmissionDate
+  const submissionTime = sheet.getRange(rowIndex, 9).getDisplayValue(); // Column I: SubmissionTime
+  
+  const ticketInfo = {
+    submitterName: submitterName,
+    problemDetails: problemDetails,
+    submissionDate: submissionDate,
+    submissionTime: submissionTime
+  };
   
   // Validate Email
   if (!userEmail || !userEmail.includes("@")) {
@@ -444,11 +463,15 @@ function handleCloseTicket(sheet, data) {
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Ticket closed, but Email FAILED: Invalid Address." })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const emailResult = sendEvaluationEmail(userEmail, caseId);
+  const emailResult = sendEvaluationEmail(userEmail, caseId, ticketInfo);
   let message = "Ticket closed.";
   
   if (emailResult.success) {
       sheet.getRange(rowIndex, 17).setValue("Sent"); 
+      // Set LastEmailSentDate, LastEmailSentTime, EmailSendCount
+      sheet.getRange(rowIndex, 22).setValue(closing.date);  // Column V: LastEmailSentDate
+      sheet.getRange(rowIndex, 23).setValue(closing.time);  // Column W: LastEmailSentTime
+      sheet.getRange(rowIndex, 24).setValue(1);             // Column X: EmailSendCount = 1
       message += " Email sent to " + userEmail;
   } else {
       sheet.getRange(rowIndex, 17).setValue("Failed: " + emailResult.error);
@@ -469,17 +492,21 @@ function handleResendEvaluationEmail(sheet, data) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Ticket is not closed." })).setMimeType(ContentService.MimeType.JSON);
   }
   
-  // Check if 24 hours have passed since closing
-  const closedDateStr = sheet.getRange(rowIndex, 10).getDisplayValue();
-  const closedTimeStr = sheet.getRange(rowIndex, 11).getDisplayValue();
+  // Check if 24 hours have passed since LAST EMAIL SENT (not closing time)
+  const lastEmailDateStr = sheet.getRange(rowIndex, 22).getDisplayValue(); // Column V: LastEmailSentDate
+  const lastEmailTimeStr = sheet.getRange(rowIndex, 23).getDisplayValue(); // Column W: LastEmailSentTime
   
-  if (!closedDateStr || !closedTimeStr) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Missing closed date/time." })).setMimeType(ContentService.MimeType.JSON);
+  // If no LastEmailSentDate, fall back to ClosedDate for backward compatibility
+  const dateToCheck = lastEmailDateStr || sheet.getRange(rowIndex, 10).getDisplayValue();
+  const timeToCheck = lastEmailTimeStr || sheet.getRange(rowIndex, 11).getDisplayValue();
+  
+  if (!dateToCheck || !timeToCheck) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Missing date/time data." })).setMimeType(ContentService.MimeType.JSON);
   }
   
   // Parse Thai date (DD/MM/YYYY BE format)
-  const dateParts = closedDateStr.split('/');
-  const timeParts = closedTimeStr.split(':');
+  const dateParts = dateToCheck.split('/');
+  const timeParts = timeToCheck.split(':');
   if (dateParts.length !== 3 || timeParts.length < 2) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid date/time format." })).setMimeType(ContentService.MimeType.JSON);
   }
@@ -492,14 +519,14 @@ function handleResendEvaluationEmail(sheet, data) {
   const minutes = parseInt(timeParts[1], 10);
   const seconds = parseInt(timeParts[2] || '0', 10);
   
-  const closedDate = new Date(yearAD, month, day, hours, minutes, seconds);
+  const lastEmailDate = new Date(yearAD, month, day, hours, minutes, seconds);
   const now = new Date();
-  const hoursSinceClosed = (now - closedDate) / (1000 * 60 * 60);
+  const hoursSinceLastEmail = (now - lastEmailDate) / (1000 * 60 * 60);
   
-  if (hoursSinceClosed < 24) {
+  if (hoursSinceLastEmail < 24) {
     return ContentService.createTextOutput(JSON.stringify({ 
       success: false, 
-      message: `ต้องรออีก ${Math.ceil(24 - hoursSinceClosed)} ชั่วโมงก่อนส่งอีเมลซ้ำ` 
+      message: `ต้องรออีก ${Math.ceil(24 - hoursSinceLastEmail)} ชั่วโมงก่อนส่งอีเมลซ้ำ` 
     })).setMimeType(ContentService.MimeType.JSON);
   }
   
@@ -509,9 +536,19 @@ function handleResendEvaluationEmail(sheet, data) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Already evaluated." })).setMimeType(ContentService.MimeType.JSON);
   }
   
-  // Get email and case ID
+  // Get email, case ID, and ticket info
   const userEmail = sheet.getRange(rowIndex, 2).getValue();
   const caseId = sheet.getRange(rowIndex, 1).getValue();
+  const problemDetails = sheet.getRange(rowIndex, 5).getValue(); // Column E: ProblemDetails
+  const submissionDate = sheet.getRange(rowIndex, 8).getDisplayValue(); // Column H: SubmissionDate
+  const submissionTime = sheet.getRange(rowIndex, 9).getDisplayValue(); // Column I: SubmissionTime
+  
+  const ticketInfo = {
+    submitterName: userEmail,
+    problemDetails: problemDetails,
+    submissionDate: submissionDate,
+    submissionTime: submissionTime
+  };
   
   if (!userEmail || !userEmail.includes("@")) {
     sheet.getRange(rowIndex, 17).setValue("Resend Failed: Invalid Email");
@@ -519,12 +556,19 @@ function handleResendEvaluationEmail(sheet, data) {
   }
   
   // Send the email
-  const emailResult = sendEvaluationEmail(userEmail, caseId);
-  const timestamp = new Date().getTime();
+  const emailResult = sendEvaluationEmail(userEmail, caseId, ticketInfo);
+  const nowForUpdate = new Date();
+  const timestamp = nowForUpdate.getTime();
+  const emailDateTime = getThaiDateTime(nowForUpdate);
   sheet.getRange(rowIndex, 14).setValue(timestamp); // Update LastUpdated
   
   if (emailResult.success) {
     sheet.getRange(rowIndex, 17).setValue("Resent");
+    // Update LastEmailSentDate, LastEmailSentTime, and increment EmailSendCount
+    sheet.getRange(rowIndex, 22).setValue(emailDateTime.date);  // Column V: LastEmailSentDate
+    sheet.getRange(rowIndex, 23).setValue(emailDateTime.time);  // Column W: LastEmailSentTime
+    const currentCount = sheet.getRange(rowIndex, 24).getValue() || 0;
+    sheet.getRange(rowIndex, 24).setValue(Number(currentCount) + 1); // Column X: EmailSendCount++
     return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Evaluation email resent successfully." })).setMimeType(ContentService.MimeType.JSON);
   } else {
     sheet.getRange(rowIndex, 17).setValue("Resend Failed: " + emailResult.error);

@@ -1941,7 +1941,8 @@
 
                         if (timeLeft <= 0) {
                             // Time's up - trigger auto resend
-                            if (!pendingResends.has(caseId) && emailStatus !== 'Resent') {
+                            // Allow resending regardless of emailStatus (Sent, Resent)
+                            if (!pendingResends.has(caseId)) {
                                 triggerAutoResend(caseId, rowIndex, container);
                             }
                         } else {
@@ -1984,7 +1985,16 @@
                         container.querySelector('.countdown-timer').textContent = '✓';
                         container.dataset.emailStatus = 'Resent';
 
-                        // Refresh data after a short delay
+                        // Increment the send count in the UI
+                        const currentCount = parseInt(container.dataset.sendCount) || 1;
+                        const newCount = currentCount + 1;
+                        container.dataset.sendCount = newCount;
+                        const countBadge = container.querySelector('.send-count-badge');
+                        if (countBadge) {
+                            countBadge.textContent = `ครั้งที่ ${newCount}`;
+                        }
+
+                        // Refresh data after a short delay to get updated LastEmailSentDate/Time
                         setTimeout(() => initializeApp(true), 2000);
                     } else {
                         container.querySelector('.countdown-status-text').textContent = 'ส่งไม่สำเร็จ: ' + result.message;
