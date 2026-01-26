@@ -22,13 +22,47 @@ function isAuthorized(token) {
 // ***** CHANGE: ปรับปรุง doGet ทั้งหมดเพื่อรองรับการแสดงหน้าประเมิน *****
 function doGet(e) {
   try {
-    // Check if requesting evaluation page
+    // Check if requesting evaluation page (legacy support)
     if (e.parameter.page === 'evaluate') {
         const caseId = e.parameter.caseId || '';
         const html = getEvaluateHtml(caseId);
         return HtmlService.createHtmlOutput(html)
             .addMetaTag('viewport', 'width=device-width, initial-scale=1')
             .setTitle('IT Helpdesk - แบบประเมินความพึงพอใจ');
+    }
+
+    // Check evaluation status API endpoint
+    if (e.parameter.action === 'checkEvaluation') {
+        const caseId = e.parameter.caseId || '';
+        if (!caseId) {
+            return ContentService.createTextOutput(JSON.stringify({ 
+                success: false, 
+                message: "Missing caseId parameter" 
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const ticketSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ticketSheetName);
+        const data = ticketSheet.getDataRange().getValues();
+        const headers = data[0];
+        const caseIdIndex = headers.findIndex(h => h.toString().toLowerCase().includes('caseid'));
+        const scoreQIndex = 17; // Column R: ScoreQ (1-indexed = 18, 0-indexed = 17)
+        
+        const ticketRow = data.find((row, index) => index > 0 && row[caseIdIndex] === caseId);
+        
+        if (!ticketRow) {
+            return ContentService.createTextOutput(JSON.stringify({ 
+                success: false, 
+                message: "ไม่พบเคสในระบบ" 
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const scoreQ = ticketRow[scoreQIndex];
+        const alreadyEvaluated = scoreQ && scoreQ.toString().trim() !== '';
+        
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: true, 
+            alreadyEvaluated: alreadyEvaluated 
+        })).setMimeType(ContentService.MimeType.JSON);
     }
 
     const lastCheckedParam = e.parameter.lastChecked;
