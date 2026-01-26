@@ -807,7 +807,7 @@ IT Hardware Team
     <div style="font-family: 'Sarabun', 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f3f4f6;">
         <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
             <h2 style="margin: 0 0 10px 0; color: #22c55e; font-size: 24px;">🔧 IT Hardware</h2>
-            <p style="margin: 0; color: #cbd5e1; font-size: 16px;">สอบถามหลังการแก้ไข</p>
+            <p style="margin: 0; color: #ffffff; font-size: 16px;">สอบถามหลังการแก้ไข</p>
         </div>
         <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="color: #1f2937; font-size: 16px; margin-bottom: 15px;">เรียน ผู้ใช้งาน,</p>
