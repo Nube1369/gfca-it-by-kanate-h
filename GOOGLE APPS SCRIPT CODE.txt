@@ -822,7 +822,7 @@ IT Hardware Team
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${followupUrl}" style="display: inline-block; background-color: #0284c7; color: #ffffff !important; text-decoration: none; padding: 16px 48px; border-radius: 50px; font-weight: bold; font-size: 16px; border: 2px solid #0369a1;">
+                <a href="${followupUrl}" style="display: inline-block; background-color: #60a5fa; color: #ffffff !important; text-decoration: none; padding: 16px 48px; border-radius: 50px; font-weight: bold; font-size: 16px; border: 2px solid #60a5fa; box-shadow: 0 4px 6px rgba(96, 165, 250, 0.4);">
                     ✅ แจ้งผลลัพธ์
                 </a>
             </div>
