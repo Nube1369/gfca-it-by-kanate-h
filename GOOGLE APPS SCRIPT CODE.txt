@@ -65,6 +65,40 @@ function doGet(e) {
         })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Check problem follow-up status API endpoint
+    if (e.parameter.action === 'checkProblemFollowup') {
+        const caseId = e.parameter.caseId || '';
+        if (!caseId) {
+            return ContentService.createTextOutput(JSON.stringify({ 
+                success: false, 
+                message: "Missing caseId parameter" 
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const ticketSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ticketSheetName);
+        const data = ticketSheet.getDataRange().getValues();
+        const headers = data[0];
+        const caseIdIndex = headers.findIndex(h => h.toString().toLowerCase().includes('caseid'));
+        const commentProblemIndex = 25; // Column Z: CommentProblem (1-indexed = 26, 0-indexed = 25)
+        
+        const ticketRow = data.find((row, index) => index > 0 && row[caseIdIndex] === caseId);
+        
+        if (!ticketRow) {
+            return ContentService.createTextOutput(JSON.stringify({ 
+                success: false, 
+                message: "ไม่พบเคสในระบบ" 
+            })).setMimeType(ContentService.MimeType.JSON);
+        }
+        
+        const commentProblem = ticketRow[commentProblemIndex];
+        const alreadySubmitted = commentProblem && commentProblem.toString().trim() !== '';
+        
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: true, 
+            alreadySubmitted: alreadySubmitted 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const lastCheckedParam = e.parameter.lastChecked;
     const ticketSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ticketSheetName);
     
@@ -163,6 +197,12 @@ function doPost(e) {
         const ticketSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ticketSheetName);
         return handleSubmitEvaluation(ticketSheet, requestData);
     }
+    
+    // Handle problem follow-up submission (no auth required)
+    if (action === 'submitProblemFollowup') {
+        const ticketSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ticketSheetName);
+        return handleSubmitProblemFollowup(ticketSheet, requestData);
+    }
 
     if (!isAuthorized(requestData.token)) {
       return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Unauthorized." })).setMimeType(ContentService.MimeType.JSON);
@@ -190,6 +230,9 @@ function doPost(e) {
         break;
       case 'deleteUser':
         result = handleDeleteUser(userSheet, requestData);
+        break;
+      case 'sendProblemFollowupEmail':
+        result = handleSendProblemFollowupEmail(ticketSheet, requestData);
         break;
       default:
         result = ContentService.createTextOutput(JSON.stringify({ success: false, message: "Invalid action." })).setMimeType(ContentService.MimeType.JSON);
@@ -672,4 +715,215 @@ function checkAuth() {
   const quota = MailApp.getRemainingDailyQuota(); 
   Logger.log("Email Quota Remaining: " + quota);
   Logger.log("Authorization Successful!");
+}
+
+// ***** PROBLEM FOLLOW-UP EMAIL FUNCTIONS *****
+
+// Handle problem follow-up submission from the web page
+function handleSubmitProblemFollowup(sheet, data) {
+    const caseId = data.caseId;
+    const problemStatus = data.problemStatus;
+    const comment = data.comment || '';
+    
+    if (!caseId) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "Missing caseId" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const dataRange = sheet.getDataRange().getValues();
+    const headers = dataRange[0];
+    const caseIdIndex = headers.findIndex(h => h.toString().toLowerCase().includes('caseid'));
+    const commentProblemIndex = 25; // Column Z: CommentProblem (0-indexed = 25)
+    
+    // Find the row with matching caseId
+    let rowIndex = -1;
+    for (let i = 1; i < dataRange.length; i++) {
+        if (dataRange[i][caseIdIndex] === caseId) {
+            rowIndex = i + 1;
+            break;
+        }
+    }
+    
+    if (rowIndex === -1) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "ไม่พบเคสในระบบ" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Create comment text with status
+    const now = new Date();
+    const thaiDateTime = getThaiDateTime(now);
+    const statusText = problemStatus === 'ok' ? 'ใช้งานได้ปกติแล้ว' : 'ยังมีปัญหาอยู่';
+    const fullComment = `[${thaiDateTime.date} ${thaiDateTime.time}] ${statusText}${comment ? ': ' + comment : ''}`;
+    
+    // Save to column Z (CommentProblem)
+    sheet.getRange(rowIndex, 26).setValue(fullComment);
+    
+    return ContentService.createTextOutput(JSON.stringify({ 
+        success: true, 
+        message: "Problem follow-up submitted." 
+    })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Send problem follow-up email to user
+function sendProblemFollowupEmail(email, caseId, ticketInfo) {
+    if (!email || !caseId) {
+        return { success: false, error: "Email or CaseID missing" };
+    }
+    
+    const followupPageUrl = "https://nube1369.github.io/gfca-it-by-kanate-h/problem-followup.html";
+    const followupUrl = `${followupPageUrl}?caseId=${caseId}`;
+    const subject = `สอบถามหลังการแก้ไข - งาน IT Helpdesk (${caseId})`;
+    
+    // Extract ticket info with defaults
+    const problem = ticketInfo.problem || 'N/A';
+    const closedDate = ticketInfo.closedDate || 'N/A';
+    
+    const body = `
+เรียน ผู้ใช้งาน,
+
+ทีม IT Helpdesk ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว
+
+รายละเอียดเคส:
+- หมายเลขเคส: ${caseId}
+- ปัญหา: ${problem}
+- วันที่ปิดเคส: ${closedDate}
+
+เราอยากทราบว่าปัญหาของคุณได้รับการแก้ไขเรียบร้อยหรือไม่?
+กรุณาคลิกลิงก์ด้านล่างเพื่อแจ้งผลลัพธ์:
+
+${followupUrl}
+
+หากมีปัญหาเพิ่มเติม ทีม IT ยินดีให้บริการครับ
+
+ขอบคุณครับ,
+IT Helpdesk Team
+    `;
+    
+    const htmlBody = `
+    <div style="font-family: 'Sarabun', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f3f4f6;">
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h2 style="margin: 0 0 10px 0; color: #22c55e;">🔧 IT Helpdesk</h2>
+            <p style="margin: 0; opacity: 0.9;">สอบถามหลังการแก้ไข</p>
+        </div>
+        <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <p style="color: #333; font-size: 16px;">เรียน ผู้ใช้งาน,</p>
+            <p style="color: #555;">ทีม IT Helpdesk ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว เราอยากทราบว่าปัญหาของคุณได้รับการแก้ไขเรียบร้อยหรือไม่?</p>
+            
+            <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <table style="width: 100%; font-size: 14px;">
+                    <tr><td style="color: #64748b; padding: 5px 0;">หมายเลขเคส:</td><td style="color: #22c55e; font-weight: bold;">${caseId}</td></tr>
+                    <tr><td style="color: #64748b; padding: 5px 0;">ปัญหา:</td><td style="color: #1e293b;">${problem}</td></tr>
+                    <tr><td style="color: #64748b; padding: 5px 0;">วันที่ปิดเคส:</td><td style="color: #1e293b;">${closedDate}</td></tr>
+                </table>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${followupUrl}" style="display: inline-block; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; text-decoration: none; padding: 15px 40px; border-radius: 50px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);">
+                    แจ้งผลลัพธ์
+                </a>
+            </div>
+            
+            <p style="color: #777; font-size: 14px; text-align: center;">หากมีปัญหาเพิ่มเติม ทีม IT ยินดีให้บริการครับ</p>
+        </div>
+        <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
+            © IT Helpdesk Team
+        </p>
+    </div>
+    `;
+    
+    try {
+        MailApp.sendEmail({
+            to: email,
+            subject: subject,
+            body: body,
+            htmlBody: htmlBody
+        });
+        return { success: true };
+    } catch (error) {
+        Logger.log("Error sending problem follow-up email: " + error);
+        return { success: false, error: error.toString() };
+    }
+}
+
+// Handle manual send problem follow-up email from dashboard
+function handleSendProblemFollowupEmail(sheet, data) {
+    const caseId = data.caseId;
+    
+    if (!caseId) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "CaseID is required" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const dataRange = sheet.getDataRange().getValues();
+    const headers = dataRange[0];
+    const caseIdIndex = headers.findIndex(h => h.toString().toLowerCase().includes('caseid'));
+    const emailIndex = headers.findIndex(h => h.toString().toLowerCase() === 'email');
+    const problemIndex = headers.findIndex(h => h.toString().toLowerCase() === 'problem');
+    const closeDateIndex = headers.findIndex(h => h.toString().toLowerCase() === 'closedate');
+    const emailProblemIndex = 24; // Column Y: EmailProblem (0-indexed = 24)
+    
+    // Find the row
+    let rowIndex = -1;
+    let ticketRow = null;
+    for (let i = 1; i < dataRange.length; i++) {
+        if (dataRange[i][caseIdIndex] === caseId) {
+            rowIndex = i + 1;
+            ticketRow = dataRange[i];
+            break;
+        }
+    }
+    
+    if (rowIndex === -1) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "Case not found" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Check if already sent
+    const alreadySent = ticketRow[emailProblemIndex] && ticketRow[emailProblemIndex].toString().trim() !== '';
+    if (alreadySent) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "Email already sent for this case" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const email = ticketRow[emailIndex];
+    if (!email) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: "No email found for this ticket" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const ticketInfo = {
+        problem: ticketRow[problemIndex] || 'N/A',
+        closedDate: ticketRow[closeDateIndex] || 'N/A'
+    };
+    
+    const result = sendProblemFollowupEmail(email, caseId, ticketInfo);
+    
+    if (result.success) {
+        // Mark as sent in column Y with timestamp
+        const now = new Date();
+        const thaiDateTime = getThaiDateTime(now);
+        sheet.getRange(rowIndex, 25).setValue(`SENT: ${thaiDateTime.date} ${thaiDateTime.time}`);
+        
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: true, 
+            message: "Problem follow-up email sent successfully" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    } else {
+        return ContentService.createTextOutput(JSON.stringify({ 
+            success: false, 
+            message: result.error || "Failed to send email" 
+        })).setMimeType(ContentService.MimeType.JSON);
+    }
 }

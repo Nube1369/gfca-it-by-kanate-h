@@ -6,15 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IT Helpdesk - Admin Dashboard</title>
 
-    <!-- Libraries -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <!-- Local Libraries -->
+    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="assets/css/tippy.css" />
 
     <style>
         :root {
@@ -1391,9 +1386,9 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/@popperjs/core@2"></script>
-    <script src="https://unpkg.com/tippy.js@6"></script>
+    <script src="assets/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/popper.min.js"></script>
+    <script src="assets/js/tippy.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
@@ -1887,6 +1882,8 @@
                         })()}
                             <div class="mt-auto text-end pt-3">
                             ${ticket.Status === 'Open' ? `<button class="btn btn-success btn-sm close-ticket-btn" data-row-index="${ticket.RowIndex}"><i class="bi bi-check-circle"></i> ปิดเคส</button>` : ''}
+                            ${ticket.Status === 'Closed' && (!ticket.EmailProblem || ticket.EmailProblem.toString().trim() === '') ? `<button class="btn btn-outline-warning btn-sm send-problem-followup-btn" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-tippy-content="ส่งเมลสอบถามปัญหาหลังแก้ไข"><i class="bi bi-envelope-exclamation"></i> สอบถามปัญหา</button>` : ''}
+                            ${ticket.Status === 'Closed' && ticket.EmailProblem && ticket.EmailProblem.toString().trim() !== '' ? `<span class="badge bg-info bg-opacity-25 text-info border border-info" data-tippy-content="${sanitizeHTML(ticket.EmailProblem)}"><i class="bi bi-envelope-check me-1"></i>ส่งเมลสอบถามแล้ว</span>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2159,6 +2156,7 @@
                 const closeBtn = e.target.closest('.close-ticket-btn');
                 const editBtn = e.target.closest('.edit-user-btn');
                 const deleteBtn = e.target.closest('.delete-user-btn');
+                const sendProblemFollowupBtn = e.target.closest('.send-problem-followup-btn');
 
                 if (closeBtn) {
                     document.getElementById('resolutionRowIndex').value = closeBtn.dataset.rowIndex;
@@ -2174,6 +2172,12 @@
                 if (deleteBtn) {
                     if (adminUsers.length <= 1) return showAlert('ไม่สามารถลบผู้ใช้คนสุดท้ายได้', false);
                     showConfirm('คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้นี้?', () => postToAction('deleteUser', { rowIndex: deleteBtn.dataset.rowIndex }));
+                }
+
+                // Send problem follow-up email button handler
+                if (sendProblemFollowupBtn) {
+                    const caseId = sendProblemFollowupBtn.dataset.caseId;
+                    showConfirm('ต้องการส่งเมลสอบถามปัญหาหลังแก้ไขไปยังผู้ใช้หรือไม่?', () => postToAction('sendProblemFollowupEmail', { caseId: caseId }));
                 }
             });
 
