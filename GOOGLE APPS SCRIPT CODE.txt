@@ -210,9 +210,9 @@ function sendEvaluationEmail(email, caseId, ticketInfo) {
     if (!email || !caseId) {
         return { success: false, error: "Email or CaseID missing" };
     }
-    // Hardcode the URL to ensure it points to the correct deployment
-    const scriptUrl = "https://script.google.com/macros/s/AKfycbyl7ot3u6zwdSr3n5dm52wZJHG08lmKhhIaPuuZiZ7Ogerv1rd1l4GmFCVDaABSAPXY/exec"; 
-    const evaluationUrl = `${scriptUrl}?page=evaluate&caseId=${caseId}`;
+    // Use GitHub Pages hosted evaluation page
+    const evaluationPageUrl = "https://nube1369.github.io/gfca-it-by-kanate-h/evaluate.html";
+    const evaluationUrl = `${evaluationPageUrl}?caseId=${caseId}`;
     const subject = `แจ้งปิดเคสงาน IT Helpdesk (${caseId}) และขอรับการประเมิน`;
     
     // Extract ticket info with defaults
