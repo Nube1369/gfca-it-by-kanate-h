@@ -805,9 +805,9 @@ IT Hardware Team
     
     const htmlBody = `
     <div style="font-family: 'Sarabun', 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f3f4f6;">
-        <div style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-            <h2 style="margin: 0 0 10px 0; color: #ffffff; font-size: 24px;">🔧 IT Hardware</h2>
-            <p style="margin: 0; color: #ffffff; font-size: 16px;">สอบถามหลังการแก้ไข</p>
+        <div style="background: #f1f5f9; color: #000000; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; border-bottom: 3px solid #0284c7;">
+            <h2 style="margin: 0 0 10px 0; color: #000000; font-size: 24px;">🔧 IT Hardware</h2>
+            <p style="margin: 0; color: #000000; font-size: 16px;">สอบถามหลังการแก้ไข</p>
         </div>
         <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="color: #000000; font-size: 16px; margin-bottom: 15px;">เรียน ผู้ใช้งาน,</p>
