@@ -785,7 +785,7 @@ function sendProblemFollowupEmail(email, caseId, ticketInfo) {
     const body = `
 เรียน ผู้ใช้งาน,
 
-ทีม IT Helpdesk ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว
+ทีม IT Hardware ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว
 
 รายละเอียดเคส:
 - หมายเลขเคส: ${caseId}
@@ -800,18 +800,18 @@ ${followupUrl}
 หากมีปัญหาเพิ่มเติม ทีม IT ยินดีให้บริการครับ
 
 ขอบคุณครับ,
-IT Helpdesk Team
+IT Hardware Team
     `;
     
     const htmlBody = `
     <div style="font-family: 'Sarabun', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f3f4f6;">
         <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-            <h2 style="margin: 0 0 10px 0; color: #22c55e;">🔧 IT Helpdesk</h2>
+            <h2 style="margin: 0 0 10px 0; color: #22c55e;">🔧 IT Hardware</h2>
             <p style="margin: 0; opacity: 0.9;">สอบถามหลังการแก้ไข</p>
         </div>
         <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             <p style="color: #333; font-size: 16px;">เรียน ผู้ใช้งาน,</p>
-            <p style="color: #555;">ทีม IT Helpdesk ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว เราอยากทราบว่าปัญหาของคุณได้รับการแก้ไขเรียบร้อยหรือไม่?</p>
+            <p style="color: #555;">ทีม IT Hardware ได้ดำเนินการแก้ไขปัญหาตามที่คุณแจ้งมาเรียบร้อยแล้ว เราอยากทราบว่าปัญหาของคุณได้รับการแก้ไขเรียบร้อยหรือไม่?</p>
             
             <div style="background: #f8fafc; border-radius: 8px; padding: 20px; margin: 20px 0;">
                 <table style="width: 100%; font-size: 14px;">
@@ -830,7 +830,7 @@ IT Helpdesk Team
             <p style="color: #777; font-size: 14px; text-align: center;">หากมีปัญหาเพิ่มเติม ทีม IT ยินดีให้บริการครับ</p>
         </div>
         <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
-            © IT Helpdesk Team
+            © IT Hardware Team
         </p>
     </div>
     `;
@@ -863,9 +863,9 @@ function handleSendProblemFollowupEmail(sheet, data) {
     const dataRange = sheet.getDataRange().getValues();
     const headers = dataRange[0];
     const caseIdIndex = headers.findIndex(h => h.toString().toLowerCase().includes('caseid'));
-    const emailIndex = headers.findIndex(h => h.toString().toLowerCase() === 'email');
-    const problemIndex = headers.findIndex(h => h.toString().toLowerCase() === 'problem');
-    const closeDateIndex = headers.findIndex(h => h.toString().toLowerCase() === 'closedate');
+    const emailIndex = 1; // Column B: SubmitterName (contains email addresses)
+    const problemIndex = headers.findIndex(h => h.toString().toLowerCase().includes('problem') && !h.toString().toLowerCase().includes('type'));
+    const closeDateIndex = headers.findIndex(h => h.toString().toLowerCase().includes('closedate') || h.toString().toLowerCase().includes('closeddate'));
     const emailProblemIndex = 24; // Column Y: EmailProblem (0-indexed = 24)
     
     // Find the row
