@@ -1064,6 +1064,51 @@
         .countdown-resent .countdown-label {
             color: #8b5cf6;
         }
+
+        /* Problem Followup Countdown Styles */
+        .problem-countdown-container {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+        }
+
+        .problem-countdown-container .countdown-label {
+            font-size: 0.85rem;
+            color: #f59e0b;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .problem-countdown-container .countdown-timer {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #f59e0b;
+            font-family: 'Inter', monospace;
+        }
+
+        .problem-countdown-sending {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .problem-countdown-sending .countdown-label,
+        .problem-countdown-sending .countdown-timer {
+            color: #22c55e;
+        }
+
+        .problem-countdown-sent {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .problem-countdown-sent .countdown-label,
+        .problem-countdown-sent .countdown-timer {
+            color: #22c55e;
+        }
     </style>
 </head>
 
@@ -1880,6 +1925,16 @@
                                     <div class="countdown-timer">กำลังคำนวณ...</div>
                                 </div>`;
                         })()}
+                            ${(() => {
+                            // Problem Followup Countdown - Show only for closed tickets without EmailProblem
+                            if (ticket.Status !== 'Closed') return '';
+                            if (ticket.EmailProblem && ticket.EmailProblem.toString().trim() !== '') return '';
+
+                            return `<div class="problem-countdown-container" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-closed-date="${sanitizeHTML(ticket.ClosedDate)}" data-closed-time="${sanitizeHTML(ticket.ClosedTime)}">
+                                    <div class="countdown-label"><i class="bi bi-envelope-exclamation"></i> <span class="problem-countdown-status-text">ส่งเมลสอบถามปัญหาอัตโนมัติใน</span></div>
+                                    <div class="countdown-timer problem-countdown-timer">กำลังคำนวณ...</div>
+                                </div>`;
+                        })()}
                             <div class="mt-auto text-end pt-3">
                             ${ticket.Status === 'Open' ? `<button class="btn btn-success btn-sm close-ticket-btn" data-row-index="${ticket.RowIndex}"><i class="bi bi-check-circle"></i> ปิดเคส</button>` : ''}
                             ${ticket.Status === 'Closed' && (!ticket.EmailProblem || ticket.EmailProblem.toString().trim() === '') ? `<button class="btn btn-outline-warning btn-sm send-problem-followup-btn" data-case-id="${sanitizeHTML(ticket.CaseID)}" data-tippy-content="ส่งเมลสอบถามปัญหาหลังแก้ไข"><i class="bi bi-envelope-exclamation"></i> สอบถามปัญหา</button>` : ''}
@@ -2014,6 +2069,98 @@
                 }
             };
 
+            // ===== PROBLEM FOLLOWUP COUNTDOWN TIMER & AUTO SEND EMAIL =====
+            let problemCountdownIntervalId = null;
+            const PROBLEM_FOLLOWUP_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+            const pendingProblemFollowups = new Set(); // Track cases being sent
+
+            const startProblemFollowupCountdownTimers = () => {
+                if (problemCountdownIntervalId) clearInterval(problemCountdownIntervalId);
+
+                problemCountdownIntervalId = setInterval(() => {
+                    const containers = document.querySelectorAll('.problem-countdown-container');
+                    containers.forEach(container => {
+                        const caseId = container.dataset.caseId;
+                        const closedDate = container.dataset.closedDate;
+                        const closedTime = container.dataset.closedTime;
+
+                        const closedDateTime = parseThaiDateTime(closedDate, closedTime);
+                        if (!closedDateTime) {
+                            container.querySelector('.problem-countdown-timer').textContent = 'ไม่พบวันที่ปิดเคส';
+                            return;
+                        }
+
+                        const now = new Date();
+                        const sendTime = new Date(closedDateTime.getTime() + PROBLEM_FOLLOWUP_COOLDOWN_MS);
+                        const timeLeft = sendTime - now;
+
+                        if (timeLeft <= 0) {
+                            // Time's up - trigger auto send
+                            if (!pendingProblemFollowups.has(caseId)) {
+                                triggerAutoProblemFollowup(caseId, container);
+                            }
+                        } else {
+                            // Display countdown
+                            const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+                            const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                            const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+                            container.querySelector('.problem-countdown-timer').textContent =
+                                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                        }
+                    });
+                }, 1000);
+            };
+
+            const triggerAutoProblemFollowup = async (caseId, container) => {
+                pendingProblemFollowups.add(caseId);
+
+                // Update UI to show sending state
+                container.classList.add('problem-countdown-sending');
+                container.querySelector('.problem-countdown-status-text').innerHTML = '<i class="bi bi-send me-1"></i>กำลังส่งเมลสอบถามปัญหา...';
+                container.querySelector('.problem-countdown-timer').textContent = 'โปรดรอสักครู่';
+
+                try {
+                    const token = sessionStorage.getItem('authToken');
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            action: 'sendProblemFollowupEmail',
+                            token,
+                            caseId: caseId
+                        })
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        container.classList.remove('problem-countdown-sending');
+                        container.classList.add('problem-countdown-sent');
+                        container.querySelector('.problem-countdown-status-text').innerHTML = '<i class="bi bi-check-circle me-1"></i>ส่งเมลสอบถามปัญหาสำเร็จ!';
+                        container.querySelector('.problem-countdown-timer').textContent = '✓';
+
+                        // Refresh data after a short delay
+                        setTimeout(() => initializeApp(true), 2000);
+                    } else {
+                        container.querySelector('.problem-countdown-status-text').textContent = 'ส่งไม่สำเร็จ: ' + result.message;
+                        container.querySelector('.problem-countdown-timer').textContent = '✗';
+                        container.classList.remove('problem-countdown-sending');
+                    }
+                } catch (error) {
+                    container.querySelector('.problem-countdown-status-text').textContent = 'เกิดข้อผิดพลาด';
+                    container.querySelector('.problem-countdown-timer').textContent = error.message;
+                    container.classList.remove('problem-countdown-sending');
+                } finally {
+                    pendingProblemFollowups.delete(caseId);
+                }
+            };
+
+            const stopProblemFollowupCountdownTimers = () => {
+                if (problemCountdownIntervalId) {
+                    clearInterval(problemCountdownIntervalId);
+                    problemCountdownIntervalId = null;
+                }
+            };
+
             async function initializeApp(isSilent = false) {
                 const token = sessionStorage.getItem('authToken');
                 if (!token) {
@@ -2087,6 +2234,7 @@
                 renderUsers(adminUsers);
                 startPolling();
                 startCountdownTimers();
+                startProblemFollowupCountdownTimers();
             }
 
             function startPolling() {
