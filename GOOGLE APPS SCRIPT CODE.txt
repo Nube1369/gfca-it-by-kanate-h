@@ -600,6 +600,7 @@ function handleCloseTicket(sheet, data) {
 
   // Send Teams notification when closing ticket
   if (data.teamsWebhookUrl) {
+      Logger.log("Teams webhook URL received: " + data.teamsWebhookUrl);
       const problemType = sheet.getRange(rowIndex, 4).getValue(); // Column D: ProblemType
       const closedTicketInfo = {
           caseId: caseId,
@@ -610,7 +611,10 @@ function handleCloseTicket(sheet, data) {
           resolutionComment: data.resolutionComment || '',
           rowIndex: rowIndex
       };
+      Logger.log("Sending Teams notification for case: " + caseId);
       sendClosedToTeams(closedTicketInfo, data.teamsWebhookUrl);
+  } else {
+      Logger.log("No teamsWebhookUrl in data - Teams notification skipped");
   }
 
   return ContentService.createTextOutput(JSON.stringify({ success: true, message: message })).setMimeType(ContentService.MimeType.JSON);
