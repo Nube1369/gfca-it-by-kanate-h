@@ -1439,6 +1439,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx6SywFMzeGIpizxI-vrGz0SCXHGdXyBpaaOx2KVSeLVcOWbhFgY6TxjMRX9LtBlO33/exec';
+            const TEAMS_WEBHOOK_URL = 'https://gfca01.webhook.office.com/webhookb2/de97901a-eefb-492a-8fb7-c03c603f6195@19af367e-c732-4ec7-8827-53efe436e9b4/IncomingWebhook/b3b24608d3b947228730d9c82a30262f/f3d1fd26-08ff-4a9f-abe5-849e27434f09/V2vUwqPWN-YVmEAjezmU9cTCSoI9WjUyLZpcOgGGbvNZI1';
             let allTickets = [], adminUsers = [], problemTypeChart, dailyTrendChart, monthlyTrendChart;
             let confirmCallback = null;
             let pollingIntervalId = null;
@@ -2340,7 +2341,7 @@
                 e.preventDefault();
                 const rowIndex = document.getElementById('resolutionRowIndex').value;
                 const resolutionComment = document.getElementById('resolutionComment').value;
-                postToAction('closeTicket', { rowIndex, resolutionComment });
+                postToAction('closeTicket', { rowIndex, resolutionComment, teamsWebhookUrl: TEAMS_WEBHOOK_URL });
                 Modals.resolution.hide();
             });
 

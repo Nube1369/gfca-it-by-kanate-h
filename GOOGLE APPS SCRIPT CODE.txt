@@ -283,6 +283,43 @@ function sendToTeams(data, webhookUrl, rowId) {
   }
 }
 
+function sendClosedToTeams(ticketInfo, webhookUrl) {
+  const dashboardUrl = `https://nube1369.github.io/HelpMedek03d/dashboard.html?ticketId=${ticketInfo.rowIndex}`;
+  
+  const payload = {
+      "@type": "MessageCard",
+      "@context": "http://schema.org/extensions",
+      "summary": "IT Helpdesk - ปิดเคสแล้ว",
+      "themeColor": "22C55E",
+      "title": "✅ เคสถูกปิดเรียบร้อยแล้ว",
+      "sections": [
+          {
+              "activityTitle": "แจ้งปิดเคส IT Helpdesk",
+              "activitySubtitle": `เคส ${ticketInfo.caseId} ได้รับการแก้ไขและปิดเรียบร้อยแล้ว`,
+              "facts": [
+                  { "name": "หมายเลขเคส", "value": ticketInfo.caseId },
+                  { "name": "ผู้แจ้ง", "value": ticketInfo.submitterName },
+                  { "name": "ประเภทปัญหา", "value": ticketInfo.problemType },
+                  { "name": "วันที่ปิดเคส", "value": `${ticketInfo.closedDate} ${ticketInfo.closedTime}` }
+              ],
+              "text": `**สรุปการแก้ไข:**\n${ticketInfo.resolutionComment || 'ไม่มีหมายเหตุ'}\n\n[คลิกเพื่อดูรายละเอียด](${dashboardUrl})`
+          }
+      ]
+  };
+
+  const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload)
+  };
+
+  try {
+      UrlFetchApp.fetch(webhookUrl, options);
+  } catch(e) {
+      Logger.log(e);
+  }
+}
+
 function sendEvaluationEmail(email, caseId, ticketInfo) {
     if (!email || !caseId) {
         return { success: false, error: "Email or CaseID missing" };
@@ -559,6 +596,21 @@ function handleCloseTicket(sheet, data) {
   } else {
       sheet.getRange(rowIndex, 17).setValue("Failed: " + emailResult.error);
       message += " Failed to send: " + emailResult.error;
+  }
+
+  // Send Teams notification when closing ticket
+  if (data.teamsWebhookUrl) {
+      const problemType = sheet.getRange(rowIndex, 4).getValue(); // Column D: ProblemType
+      const closedTicketInfo = {
+          caseId: caseId,
+          submitterName: submitterName,
+          problemType: problemType,
+          closedDate: closing.date,
+          closedTime: closing.time,
+          resolutionComment: data.resolutionComment || '',
+          rowIndex: rowIndex
+      };
+      sendClosedToTeams(closedTicketInfo, data.teamsWebhookUrl);
   }
 
   return ContentService.createTextOutput(JSON.stringify({ success: true, message: message })).setMimeType(ContentService.MimeType.JSON);
